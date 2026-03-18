@@ -3,34 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Nakata Ping Pong GO</title>
+    <title>Nakata Real Table Tennis</title>
     <style>
         body {
-            margin: 0; padding: 0; background-color: #222; color: white;
+            margin: 0; padding: 0; background-color: #111; color: white;
             font-family: sans-serif; display: flex; flex-direction: column;
             align-items: center; justify-content: center; height: 100vh; overflow: hidden; touch-action: none;
         }
-        #game-container { position: relative; width: 100%; max-width: 500px; height: 80vh; }
-        canvas {
-            background-color: #2e7d32; display: block; width: 100%; height: 100%;
-            border-bottom: 15px solid #1b5e20; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }
+        #game-container { position: relative; width: 100%; max-width: 500px; height: 90vh; }
+        canvas { display: block; width: 100%; height: 100%; }
         .ui {
-            position: absolute; top: 20px; width: 100%; display: flex;
-            justify-content: space-around; font-size: 24px; font-weight: bold;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none;
+            position: absolute; top: 10px; width: 100%; display: flex;
+            justify-content: space-around; font-size: 20px; font-weight: bold;
+            z-index: 50; pointer-events: none;
         }
         #message {
-            position: absolute; top: 40%; width: 100%; text-align: center;
-            font-size: 30px; font-weight: bold; color: #ffeb3b; display: none;
+            position: absolute; top: 45%; width: 100%; text-align: center;
+            font-size: 32px; font-weight: bold; color: #fff; text-shadow: 0 0 10px #000; display: none; z-index: 60;
         }
         #overlay {
-            position: absolute; inset: 0; background: rgba(0,0,0,0.8);
+            position: absolute; inset: 0; background: rgba(0,0,0,0.85);
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;
         }
         button {
-            padding: 15px 40px; font-size: 20px; background: #ffeb3b; border: none;
-            border-radius: 50px; cursor: pointer; font-weight: bold;
+            padding: 15px 40px; font-size: 20px; background: #2196F3; border: none;
+            color: white; border-radius: 5px; cursor: pointer; font-weight: bold;
         }
     </style>
 </head>
@@ -38,15 +35,15 @@
 
 <div id="game-container">
     <div class="ui">
-        <div>CPU: <span id="cpu-score">0</span></div>
-        <div>YOU: <span id="player-score">0</span></div>
+        <div style="color:#aaa">CPU: <span id="cpu-score" style="color:#fff">0</span></div>
+        <div style="color:#aaa">YOU: <span id="player-score" style="color:#fff">0</span></div>
     </div>
     <canvas id="gameCanvas"></canvas>
     <div id="message">READY?</div>
     <div id="overlay">
-        <h1 style="color: #ffeb3b">PING PONG GO</h1>
-        <p>ドラッグでラケットを操作！</p>
-        <button onclick="startGame()">START</button>
+        <h1 style="margin-bottom:10px">REAL PING PONG</h1>
+        <p style="margin-bottom:20px; color:#ccc">ドラッグで打つ、タップでサーブ</p>
+        <button onclick="startGame()">試合開始</button>
     </div>
 </div>
 
@@ -56,34 +53,27 @@
     const msgEl = document.getElementById("message");
     const overlay = document.getElementById("overlay");
 
-    // 画面サイズ設定
-    const w = 500;
-    const h = 800;
-    canvas.width = w;
-    canvas.height = h;
+    const w = 500; const h = 800;
+    canvas.width = w; canvas.height = h;
 
-    let isRunning = false;
-    let isWaiting = false;
-    let totalPoints = 0;
-    let server = "player";
+    let isRunning = false; let isWaiting = false;
+    let totalPoints = 0; let server = "player";
+    let impactEffect = 0; // バウンド時のエフェクト
 
-    // ボール設定（速度は抑えめ、威力＝弾きを重視）
-    const ball = { x: w/2, y: h/2, z: 0, dx: 0, dy: 0, vz: 0, r: 10, color: "#fff" };
-    const player = { x: w/2, y: h - 100, r: 45, score: 0, vx: 0 };
-    const cpu = { x: w/2, y: 200, r: 40, score: 0 };
+    const ball = { x: w/2, y: h/2, z: 0, dx: 0, dy: 0, vz: 0, r: 10 };
+    const player = { x: w/2, y: h - 100, r: 50, score: 0, vx: 0 };
+    const cpu = { x: w/2, y: 180, r: 40, score: 0 };
 
-    // マウス・タッチ移動
     function move(e) {
         if (!isRunning) return;
         const rect = canvas.getBoundingClientRect();
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const lastX = player.x;
         player.x = (clientX - rect.left) * (w / rect.width);
-        player.vx = player.x - lastX; // スイングの速さ
+        player.vx = (player.x - lastX) * 0.5;
         
         if (isWaiting && server === "player") {
-            ball.x = player.x;
-            ball.y = player.y - 30;
+            ball.x = player.x; ball.y = player.y - 20;
         }
     }
 
@@ -94,96 +84,75 @@
 
     function startGame() {
         player.score = 0; cpu.score = 0; totalPoints = 0;
-        updateUI();
-        overlay.style.display = "none";
-        isRunning = true;
-        resetRound();
-        loop();
+        updateUI(); overlay.style.display = "none";
+        isRunning = true; resetRound(); loop();
     }
 
     function resetRound() {
         isWaiting = true;
         server = (Math.floor(totalPoints / 2) % 2 === 0) ? "player" : "cpu";
-        ball.vz = 0; ball.z = 0;
+        ball.vz = 0; ball.z = 100; // 最初は少し高い位置から
         
         if (server === "player") {
-            msgEl.innerText = "YOUR SERVE";
-            msgEl.style.display = "block";
+            msgEl.innerText = "YOUR SERVE"; msgEl.style.display = "block";
         } else {
-            msgEl.innerText = "CPU SERVE";
-            msgEl.style.display = "block";
-            ball.x = w/2; ball.y = 220; // CPUのサーブ位置を固定
-            setTimeout(serve, 1500);
+            msgEl.innerText = "CPU SERVE"; msgEl.style.display = "block";
+            ball.x = w/2; ball.y = 200;
+            setTimeout(serve, 1200);
         }
     }
 
     function serve() {
-        msgEl.style.display = "none";
-        isWaiting = false;
-        if (server === "player") {
-            ball.dy = -10; // ボールの速さは控えめ
-            ball.dx = player.vx * 0.5;
-            ball.vz = 8;
-        } else {
-            ball.dy = 10;
-            ball.dx = (Math.random() - 0.5) * 6;
-            ball.vz = 8;
-        }
+        msgEl.style.display = "none"; isWaiting = false;
+        if (server === "player") { ball.dy = -10; ball.vz = 7; ball.dx = player.vx; }
+        else { ball.dy = 10; ball.vz = 7; ball.dx = (Math.random()-0.5)*5; }
     }
 
     function update() {
         if (!isRunning || isWaiting) return;
+        ball.x += ball.dx; ball.y += ball.dy; ball.z += ball.vz; ball.vz -= 0.35;
 
-        // ボール移動
-        ball.x += ball.dx;
-        ball.y += ball.dy;
-        ball.z += ball.vz;
-        ball.vz -= 0.3; // 重力
-
-        // バウンド
+        // 台でのバウンド判定（台の範囲内のみ）
+        let onTable = (ball.y > 200 && ball.y < h - 50 && ball.x > w*0.1 && ball.x < w*0.9);
         if (ball.z < 0) {
-            ball.z = 0;
-            ball.vz = 6;
+            if (onTable) {
+                ball.z = 0; ball.vz = 6;
+                impactEffect = 10; // バウンドエフェクト発動
+            } else {
+                // 台の外に落ちたら得点判定
+                scorePoint(ball.y > h/2 ? "cpu" : "player");
+            }
         }
 
-        // CPU移動（サーブ位置固定のため、ラリー中のみ動く）
-        cpu.x += (ball.x - cpu.x) * 0.1;
+        cpu.x += (ball.x - cpu.x) * 0.12;
 
-        // 当たり判定：プレイヤー（手前）
-        if (ball.y > player.y - 20 && ball.y < player.y + 20 && ball.dy > 0) {
+        // プレイヤー打球
+        if (ball.y > player.y - 30 && ball.y < player.y + 30 && ball.dy > 0 && ball.z < 60) {
             if (Math.abs(ball.x - player.x) < player.r) {
-                ball.dy = -12; // 打ち返す強さを強化
-                ball.dx = (ball.x - player.x) * 0.3 + player.vx * 0.4;
-                ball.vz = 7;
+                ball.dy = -14; ball.vz = 7;
+                ball.dx = (ball.x - player.x) * 0.4 + player.vx;
             }
         }
 
-        // 当たり判定：CPU（奥）
-        if (ball.y < cpu.y + 20 && ball.y > cpu.y - 20 && ball.dy < 0) {
+        // CPU打球
+        if (ball.y < cpu.y + 20 && ball.y > cpu.y - 20 && ball.dy < 0 && ball.z < 50) {
             if (Math.abs(ball.x - cpu.x) < cpu.r) {
-                ball.dy = 12;
+                ball.dy = 14; ball.vz = 7;
                 ball.dx = (ball.x - cpu.x) * 0.3;
-                ball.vz = 7;
             }
         }
 
-        // 得点判定
         if (ball.y < 0) scorePoint("player");
         if (ball.y > h) scorePoint("cpu");
-        if (ball.x < 0 || ball.x > w) scorePoint(ball.x < 0 ? "cpu" : "player");
     }
 
     function scorePoint(winner) {
         if (winner === "player") player.score++; else cpu.score++;
-        totalPoints++;
-        updateUI();
+        totalPoints++; updateUI();
         if (player.score >= 11 || cpu.score >= 11) {
-            isRunning = false;
-            overlay.style.display = "flex";
-            document.querySelector("h1").innerText = player.score >= 11 ? "YOU WIN!" : "GAME OVER";
-        } else {
-            resetRound();
-        }
+            isRunning = false; overlay.style.display = "flex";
+            document.querySelector("h1").innerText = player.score >= 11 ? "WIN!" : "LOSE";
+        } else { resetRound(); }
     }
 
     function updateUI() {
@@ -192,50 +161,67 @@
     }
 
     function draw() {
-        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = "#1a1a1a"; ctx.fillRect(0, 0, w, h); // 床
 
-        // 台のパース描画
-        ctx.fillStyle = "#2e7d32";
+        // 1. 台の脚・側面（厚みを出す）
+        ctx.fillStyle = "#0d47a1"; 
         ctx.beginPath();
-        ctx.moveTo(w*0.2, 200); ctx.lineTo(w*0.8, 200);
-        ctx.lineTo(w, h); ctx.lineTo(0, h);
+        ctx.moveTo(w*0.15, 200); ctx.lineTo(w*0.85, 200);
+        ctx.lineTo(w*0.95, h-50); ctx.lineTo(w*0.05, h-50);
         ctx.fill();
 
-        // センターライン
+        // 2. 台の表面（Ping Pong Go風の明るい緑）
+        ctx.fillStyle = "#2e7d32";
+        ctx.beginPath();
+        ctx.moveTo(w*0.15, 200); ctx.lineTo(w*0.85, 200);
+        ctx.lineTo(w*0.93, h-65); ctx.lineTo(w*0.07, h-65);
+        ctx.fill();
+
+        // 3. 白線（枠線）
         ctx.strokeStyle = "white"; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(w/2, 200); ctx.lineTo(w/2, h); ctx.stroke();
+        ctx.stroke();
         
-        // ネット
-        ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.moveTo(w*0.15, 400); ctx.lineTo(w*0.85, 400); ctx.stroke();
+        // センターライン
+        ctx.beginPath(); ctx.moveTo(w/2, 200); ctx.lineTo(w/2, h-65); ctx.stroke();
 
-        // ボール（影）
-        ctx.fillStyle = "rgba(0,0,0,0.2)";
-        ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2); ctx.fill();
+        // 4. ネット（立体的な網）
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillRect(w*0.1, 400, w*0.8, 40);
+        ctx.strokeStyle = "white"; ctx.lineWidth = 1;
+        ctx.strokeRect(w*0.1, 400, w*0.8, 40);
 
-        // ボール本体
-        ctx.fillStyle = ball.color;
+        // 5. バウンドエフェクト
+        if (impactEffect > 0) {
+            ctx.strokeStyle = `rgba(255,255,255,${impactEffect/10})`;
+            ctx.beginPath(); ctx.ellipse(ball.x, ball.y, 20-impactEffect, 10-impactEffect/2, 0, 0, Math.PI*2); ctx.stroke();
+            impactEffect--;
+        }
+
+        // 6. ボールと影
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath(); ctx.ellipse(ball.x, ball.y, ball.r, ball.r/2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = "#fff";
         ctx.beginPath(); ctx.arc(ball.x, ball.y - ball.z, ball.r, 0, Math.PI*2); ctx.fill();
 
-        // CPUラケット
-        drawRacket(cpu.x, cpu.y, "#333", false);
-
-        // プレイヤーラケット
-        drawRacket(player.x, player.y, "#d32f2f", true);
+        // 7. ラケット（プレイヤー）
+        drawRacket(player.x, player.y, "#b71c1c", true);
+        drawRacket(cpu.x, cpu.y, "#212121", false);
     }
 
     function drawRacket(x, y, color, isPlayer) {
+        ctx.save();
+        // 影
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.beginPath(); ctx.ellipse(x, y + 20, 30, 15, 0, 0, Math.PI*2); ctx.fill();
+        // ラケット本体
+        ctx.fillStyle = color;
+        ctx.beginPath(); ctx.arc(x, y, isPlayer ? 50 : 40, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = "#8d6e63"; // 持ち手
-        ctx.fillRect(x - 10, isPlayer ? y + 20 : y - 60, 20, 40);
-        ctx.fillStyle = color; // ラバー
-        ctx.beginPath(); ctx.arc(x, y, isPlayer ? 45 : 40, 0, Math.PI*2); ctx.fill();
+        ctx.fillRect(x-10, isPlayer ? y+40 : y-70, 20, 40);
+        ctx.restore();
     }
 
-    function loop() {
-        update(); draw();
-        if (isRunning) requestAnimationFrame(loop);
-    }
-
+    function loop() { update(); draw(); if (isRunning) requestAnimationFrame(loop); }
     draw();
 </script>
 </body>
