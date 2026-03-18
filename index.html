@@ -173,4 +173,103 @@
         if (ball.x < 0 || ball.x > w) ball.dx *= -1;
 
         // CPUの動き（リアルな反応速度に調整）
-        cpu.x += (
+        cpu.x += (ball.x - (cpu.x + cpu.width/2)) * 0.1;
+
+        // 衝突判定
+        let paddle = (ball.y > h/2) ? player : cpu;
+        if (detectCollision(ball, paddle)) {
+            let collidePoint = (ball.x - (paddle.x + paddle.width/2)) / (paddle.width/2);
+            let angle = collidePoint * (Math.PI/3);
+            let direction = (ball.y > h/2) ? -1 : 1;
+
+            if (paddle === player && smashActive) {
+                ball.speed = 14;
+                ball.isSmash = true;
+            } else {
+                ball.speed = 7 + (player.score + cpu.score) * 0.3;
+                ball.isSmash = false;
+            }
+
+            ball.dy = direction * ball.speed * Math.cos(angle);
+            ball.dx = ball.speed * Math.sin(angle);
+        }
+
+        // 得点判定
+        if (ball.y < 0 || ball.y > h) {
+            if (ball.y < 0) player.score++;
+            else cpu.score++;
+            updateScores();
+            if (player.score >= 11 || cpu.score >= 11) {
+                endGame();
+                return;
+            }
+            resetBall();
+        }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function updateScores() {
+        document.getElementById("player-score").innerText = player.score;
+        document.getElementById("cpu-score").innerText = cpu.score;
+    }
+
+    function endGame() {
+        isRunning = false;
+        overlay.style.display = "block";
+        document.getElementById("status-title").innerText = (player.score >= 11) ? "YOU WIN!" : "YOU LOSE...";
+        document.getElementById("status-msg").innerText = `結果: ${player.score} - ${cpu.score}`;
+    }
+
+    function detectCollision(b, p) {
+        return b.x > p.x && b.x < p.x + p.width && b.y > p.y && b.y < p.y + p.height;
+    }
+
+    function draw() {
+        // 台の描画
+        ctx.fillStyle = "#1e5799";
+        ctx.fillRect(0, 0, w, h);
+
+        // センターライン
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.fillRect(w/2 - 2, 0, 4, h);
+
+        // ネット（リアルな網目感）
+        ctx.fillStyle = "rgba(255,255,255,0.3)";
+        ctx.fillRect(0, h/2 - 2, w, 4);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, h/2 - 10, w, 20);
+
+        // ボールの影（これがリアルさの秘訣！）
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath();
+        ctx.arc(ball.x + 5, ball.y + 5, ball.radius, 0, Math.PI*2);
+        ctx.fill();
+
+        // ボール本体
+        ctx.fillStyle = ball.isSmash ? "#f1c40f" : "#ffffff";
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI*2);
+        ctx.fill();
+
+        // パドル（ラケット風）
+        drawPaddle(player.x, player.y, player.width, player.height, player.color, true);
+        drawPaddle(cpu.x, cpu.y, cpu.width, cpu.height, cpu.color, false);
+    }
+
+    function drawPaddle(x, y, width, height, color, isPlayer) {
+        ctx.fillStyle = color;
+        ctx.shadowBlur = (isPlayer && smashActive) ? 15 : 0;
+        ctx.shadowColor = "#fff";
+        // 角を丸くしてラケットっぽく
+        ctx.beginPath();
+        ctx.roundRect(x, y, width, height, 5);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+</script>
+
+</body>
+</html>
