@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Nakata Real Table Tennis</title>
+    <title>Nakata Real Table Tennis - Match</title>
     <style>
         body {
             margin: 0; padding: 0; background-color: #2c3e50; color: white;
@@ -16,22 +16,24 @@
             padding: 10px 30px; border-radius: 5px; border: 2px solid #bdc3c7;
         }
         .score-num { font-size: 32px; font-weight: bold; color: #f1c40f; font-family: monospace; }
+        .server-dot { width: 10px; height: 10px; background: #f1c40f; border-radius: 50%; display: inline-block; visibility: hidden; }
+        .is-serving { visibility: visible; }
+        
         #game-area { position: relative; perspective: 800px; }
         canvas {
-            background-color: #1e5799; display: block; border: 8px solid #fff;
-            border-radius: 4px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            background-color: #1e5799; display: block; border-bottom: 8px solid #fff;
+            border-top: 8px solid #fff;
             transform: rotateX(20deg);
+        }
+        #message-display {
+            position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 30px; font-weight: bold; color: #fff; text-align: center;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.8); pointer-events: none; z-index: 5;
         }
         #overlay {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             text-align: center; background: rgba(0, 0, 0, 0.85); padding: 40px;
             border-radius: 10px; width: 80%; z-index: 10;
-        }
-        #message-display {
-            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 40px; font-weight: bold; color: #f1c40f;
-            text-shadow: 2px 2px 10px rgba(0,0,0,0.8); pointer-events: none;
-            display: none; z-index: 5;
         }
         button {
             background: #e74c3c; border: none; color: white; padding: 15px 30px;
@@ -42,16 +44,24 @@
 <body>
 
 <div class="scoreboard">
-    <div style="text-align:center"><div style="font-size:12px">CPU</div><div id="cpu-score" class="score-num">0</div></div>
+    <div style="text-align:center">
+        <div id="cpu-serve" class="server-dot"></div>
+        <div style="font-size:12px">CPU</div>
+        <div id="cpu-score" class="score-num">0</div>
+    </div>
     <div style="font-size: 32px; margin-top:10px">-</div>
-    <div style="text-align:center"><div style="font-size:12px">YOU</div><div id="player-score" class="score-num">0</div></div>
+    <div style="text-align:center">
+        <div id="player-serve" class="server-dot"></div>
+        <div style="font-size:12px">YOU</div>
+        <div id="player-score" class="score-num">0</div>
+    </div>
 </div>
 
 <div id="game-area">
     <canvas id="pongCanvas"></canvas>
-    <div id="message-display">READY?</div>
+    <div id="message-display"></div>
     <div id="overlay">
-        <h2 style="margin-top:0;">REAL PING PONG</h2>
+        <h2 style="margin-top:0;">TABLE TENNIS MATCH</h2>
         <button onclick="startGame()">試合開始</button>
     </div>
 </div>
@@ -65,12 +75,13 @@
     const w = 400, h = 600;
     canvas.width = w; canvas.height = h;
 
-    let isRunning = false, isWaiting = false;
+    let isRunning = false, isWaiting = false, isServeMode = true;
     let smashActive = false, smashTimer = 0;
+    let totalPoints = 0;
+    let server = "player"; // player or cpu
 
-    // ボールの状態に「高さ(bounce)」を追加
     const ball = { 
-        x: w/2, y: h/2, radius: 7, speed: 6, dx: 0, dy: 0, 
+        x: w/2, y: h/2, radius: 7, dx: 0, dy: 0, 
         z: 0, vz: 0, isSmash: false 
     };
     const player = { x: w/2-40, y: h-25, width: 80, height: 10, color: "#c0392b", score: 0 };
@@ -81,8 +92,13 @@
         let clientX = e.touches ? e.touches[0].clientX : e.clientX;
         const rect = canvas.getBoundingClientRect();
         player.x = (clientX - rect.left) * (w / rect.width) - player.width / 2;
+
         if (e.type === "touchstart" || e.type === "mousedown") {
-            smashActive = true; smashTimer = 15;
+            if (isServeMode && server === "player" && !isWaiting) {
+                launchServe();
+            } else {
+                smashActive = true; smashTimer = 15;
+            }
         }
     }
 
@@ -92,69 +108,108 @@
     window.addEventListener("touchmove", handleInput, { passive: false });
 
     function startGame() {
-        player.score = 0; cpu.score = 0;
+        player.score = 0; cpu.score = 0; totalPoints = 0;
+        server = "player";
         updateScores();
         overlay.style.display = "none";
         isRunning = true;
-        prepareNextPoint("READY?");
-        animate(); // アニメーションループ開始
+        prepareNextPoint();
+        animate();
     }
 
-    function prepareNextPoint(msg) {
+    function prepareNextPoint() {
         isWaiting = true;
-        ball.x = w / 2; ball.y = h / 2;
-        ball.dx = 0; ball.dy = 0; ball.z = 0;
-        messageDisplay.innerText = msg;
-        messageDisplay.style.display = "block";
+        isServeMode = true;
+        ball.z = 0; ball.vz = 0;
+        ball.dx = 0; ball.dy = 0;
+        
+        // 2点ごとにサーブ交代
+        server = (Math.floor(totalPoints / 2) % 2 === 0) ? "player" : "cpu";
+        updateServeIndicator();
 
-        setTimeout(() => {
-            messageDisplay.style.display = "none";
-            isWaiting = false;
-            // 2秒後に動き出す
-            ball.dx = (Math.random() - 0.5) * 6;
-            ball.dy = 5;
-        }, 2000);
+        if (server === "player") {
+            messageDisplay.innerHTML = "YOUR SERVE<br><small>TAP TO START</small>";
+        } else {
+            messageDisplay.innerHTML = "CPU SERVE";
+            setTimeout(() => { if(isRunning) launchServe(); }, 1500);
+        }
+        messageDisplay.style.display = "block";
+    }
+
+    function launchServe() {
+        messageDisplay.style.display = "none";
+        isWaiting = false;
+        if (server === "player") {
+            ball.x = player.x + player.width/2;
+            ball.y = player.y - 20;
+            ball.dy = -10; // サーブの威力アップ
+            ball.dx = (Math.random() - 0.5) * 4;
+            ball.vz = 8; // 高く打ち出す
+        } else {
+            ball.x = cpu.x + cpu.width/2;
+            ball.y = cpu.y + 20;
+            ball.dy = 10;
+            ball.dx = (Math.random() - 0.5) * 4;
+            ball.vz = 8;
+        }
     }
 
     function update() {
-        if (!isRunning || isWaiting) return;
+        if (!isRunning || (isWaiting && !isServeMode)) return;
+
+        if (isServeMode && isWaiting) {
+            // サーブ待機中はボールをラケットの位置に固定
+            if(server === "player") ball.x = player.x + player.width/2;
+            else ball.x = cpu.x + cpu.width/2;
+            return;
+        }
 
         if (smashTimer > 0) smashTimer--; else smashActive = false;
 
         ball.x += ball.dx;
         ball.y += ball.dy;
-
-        // --- バウンドの物理シミュレーション ---
         ball.z += ball.vz;
-        ball.vz -= 0.2; // 重力
-        if (ball.z < 0) { // 台にバウンド
+        ball.vz -= 0.3; // 重力
+
+        // 台でのバウンド
+        if (ball.z < 0) {
             ball.z = 0;
-            ball.vz = 4; // 跳ね返り
+            ball.vz = 5; 
         }
 
-        if (ball.x < 0 || ball.x > w) ball.dx *= -1;
+        // サイドの壁をなくす（アウト判定）
+        if (ball.x < -50 || ball.x > w + 50) {
+            pointScore(ball.x < 0 ? "cpu" : "player", "OUT!");
+        }
+
         cpu.x += (ball.x - (cpu.x + cpu.width/2)) * 0.1;
 
         let paddle = (ball.y > h/2) ? player : cpu;
         if (detectCollision(ball, paddle)) {
+            isServeMode = false;
             let collidePoint = (ball.x - (paddle.x + paddle.width/2)) / (paddle.width/2);
             let angle = collidePoint * (Math.PI/3);
             let direction = (ball.y > h/2) ? -1 : 1;
 
-            ball.speed = (paddle === player && smashActive) ? 14 : 7 + (player.score + cpu.score) * 0.2;
+            let speed = (paddle === player && smashActive) ? 15 : 8;
             ball.isSmash = (paddle === player && smashActive);
             
-            ball.dy = direction * ball.speed * Math.cos(angle);
-            ball.dx = ball.speed * Math.sin(angle);
-            ball.vz = 6; // 打ち返した時に高く跳ねる
+            ball.dy = direction * speed * Math.cos(angle);
+            ball.dx = speed * Math.sin(angle);
+            ball.vz = 6;
         }
 
-        if (ball.y < 0 || ball.y > h) {
-            if (ball.y < 0) player.score++; else cpu.score++;
-            updateScores();
-            if (player.score >= 11 || cpu.score >= 11) { endGame(); return; }
-            prepareNextPoint(ball.y < 0 ? "POINT!" : "CPU POINT");
+        if (ball.y < -20 || ball.y > h + 20) {
+            pointScore(ball.y < 0 ? "player" : "cpu", "POINT!");
         }
+    }
+
+    function pointScore(winner, txt) {
+        if (winner === "player") player.score++; else cpu.score++;
+        totalPoints++;
+        updateScores();
+        if (player.score >= 11 || cpu.score >= 11) { endGame(); return; }
+        prepareNextPoint();
     }
 
     function animate() {
@@ -168,29 +223,42 @@
         document.getElementById("cpu-score").innerText = cpu.score;
     }
 
+    function updateServeIndicator() {
+        document.getElementById("player-serve").className = "server-dot" + (server === "player" ? " is-serving" : "");
+        document.getElementById("cpu-serve").className = "server-dot" + (server === "cpu" ? " is-serving" : "");
+    }
+
     function endGame() {
         isRunning = false;
         overlay.style.display = "block";
-        document.getElementById("status-title").innerText = (player.score >= 11) ? "YOU WIN!" : "LOSE...";
+        document.getElementById("status-title").innerText = (player.score >= 11) ? "MATCH WON!" : "MATCH LOST";
     }
 
     function detectCollision(b, p) {
-        return b.x > p.x && b.x < p.x + p.width && b.y > p.y - 10 && b.y < p.y + p.height + 10 && b.z < 20;
+        return b.x > p.x && b.x < p.x + p.width && b.y > p.y - 15 && b.y < p.y + p.height + 15 && b.z < 25;
     }
 
     function draw() {
         ctx.fillStyle = "#1e5799"; ctx.fillRect(0, 0, w, h);
-        ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.fillRect(w/2 - 2, 0, 4, h);
-        ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.fillRect(0, h/2 - 2, w, 4);
+        
+        // 卓球台の白線（サイドラインを消してエンドラインのみ強調）
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, w, 4); // 上
+        ctx.fillRect(0, h-4, w, 4); // 下
+        ctx.fillRect(w/2 - 1, 0, 2, h); // センターライン
 
-        // 影の描画（ボールの高さに合わせて位置をずらす）
+        // ネット
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.fillRect(0, h/2 - 1, w, 2);
+
+        // 影
         ctx.fillStyle = "rgba(0,0,0,0.3)";
         ctx.beginPath();
-        ctx.arc(ball.x + ball.z*0.5, ball.y + ball.z*0.5, ball.radius, 0, Math.PI*2);
+        ctx.arc(ball.x + ball.z*0.3, ball.y + ball.z*0.3, ball.radius, 0, Math.PI*2);
         ctx.fill();
 
-        // ボールの描画（高さに合わせて少し大きくする）
-        let currentRadius = ball.radius + (ball.z * 0.2);
+        // ボール
+        let currentRadius = ball.radius + (ball.z * 0.15);
         ctx.fillStyle = ball.isSmash ? "#f1c40f" : "#ffffff";
         ctx.beginPath();
         ctx.arc(ball.x, ball.y - ball.z, currentRadius, 0, Math.PI*2);
@@ -206,8 +274,6 @@
         ctx.beginPath(); ctx.roundRect(x, y, width, height, 5); ctx.fill();
         ctx.shadowBlur = 0;
     }
-
-    draw(); // 初回描画
 </script>
 </body>
 </html>
