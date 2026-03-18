@@ -1,1 +1,276 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Nakata PingPong Special</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-container {
+            position: relative;
+            border: 4px solid #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+        canvas {
+            display: block;
+            background-color: #004d40;
+        }
+        .ui {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            font-size: 20px;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        #overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            width: 80%;
+            box-sizing: border-box;
+            border: 2px solid #00b4d8;
+        }
+        button {
+            background: #00b4d8;
+            border: none;
+            color: white;
+            padding: 12px 24px;
+            font-size: 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        .smash-text {
+            color: #ffeb3b;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
 
+<div id="game-container">
+    <div class="ui">
+        <div>CPU: <span id="cpu-score">0</span></div>
+        <div>YOU: <span id="player-score">0</span></div>
+    </div>
+    <canvas id="pongCanvas"></canvas>
+    
+    <div id="overlay">
+        <h2 id="status-title">PONG GAME</h2>
+        <p id="status-msg">11点先取で勝利！</p>
+        <p class="smash-text">【必殺技】打ち返す瞬間にタップで<br>高速スマッシュ！</p>
+        <button onclick="startGame()">START</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("pongCanvas");
+    const ctx = canvas.getContext("2d");
+    const overlay = document.getElementById("overlay");
+    const statusTitle = document.getElementById("status-title");
+    const statusMsg = document.getElementById("status-msg");
+
+    const w = Math.min(window.innerWidth * 0.9, 400);
+    const h = Math.min(window.innerHeight * 0.7, 600);
+    canvas.width = w;
+    canvas.height = h;
+
+    // ゲーム状態
+    let isRunning = false;
+    let smashActive = false; // 必殺技発動中か
+    let smashTimer = 0;
+
+    const ball = { x: w/2, y: h/2, radius: 8, baseSpeed: 5, speed: 5, dx: 4, dy: 4, color: "#ffffff" };
+    const player = { x: w/2 - 40, y: h - 30, width: 80, height: 12, color: "#00b4d8", score: 0 };
+    const cpu = { x: w/2 - 40, y: 20, width: 80, height: 12, color: "#ef476f", score: 0 };
+
+    // 操作
+    function handleInput(e) {
+        if (!isRunning) return;
+        
+        // パドルの移動
+        let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const rect = canvas.getBoundingClientRect();
+        player.x = (clientX - rect.left) - player.width / 2;
+        if (player.x < 0) player.x = 0;
+        if (player.x > w - player.width) player.x = w - player.width;
+
+        // タップ時に必殺技発動（0.3秒間だけ有効）
+        if (e.type === "touchstart" || e.type === "mousedown") {
+            smashActive = true;
+            smashTimer = 15; // フレーム数で持続時間を管理
+        }
+    }
+
+    canvas.addEventListener("mousemove", handleInput);
+    canvas.addEventListener("mousedown", handleInput);
+    canvas.addEventListener("touchstart", (e) => {
+        handleInput(e);
+        e.preventDefault();
+    }, { passive: false });
+    canvas.addEventListener("touchmove", (e) => {
+        handleInput(e);
+        e.preventDefault();
+    }, { passive: false });
+
+    function startGame() {
+        player.score = 0;
+        cpu.score = 0;
+        document.getElementById("player-score").innerText = "0";
+        document.getElementById("cpu-score").innerText = "0";
+        overlay.style.display = "none";
+        isRunning = true;
+        resetBall();
+        update();
+    }
+
+    function resetBall() {
+        ball.x = w / 2;
+        ball.y = h / 2;
+        ball.speed = ball.baseSpeed;
+        ball.dx = (Math.random() > 0.5 ? 1 : -1) * 4;
+        ball.dy = 4;
+    }
+
+    function update() {
+        if (!isRunning) return;
+
+        // 必殺技タイマーのカウントダウン
+        if (smashTimer > 0) {
+            smashTimer--;
+        } else {
+            smashActive = false;
+        }
+
+        ball.x += ball.dx;
+        ball.y += ball.dy;
+
+        if (ball.x + ball.radius > w || ball.x - ball.radius < 0) {
+            ball.dx *= -1;
+        }
+
+        // CPU AI
+        cpu.x += (ball.x - (cpu.x + cpu.width / 2)) * 0.12;
+
+        // 衝突判定
+        let paddle = (ball.y > h / 2) ? player : cpu;
+        if (detectCollision(ball, paddle)) {
+            let collidePoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+            let angle = collidePoint * (Math.PI / 4);
+            let direction = (ball.y > h / 2) ? -1 : 1;
+
+            // 必殺技(スマッシュ)判定
+            if (paddle === player && smashActive) {
+                ball.speed = 12; // 通常より速い！
+                ball.color = "#ffeb3b"; // スマッシュ中は黄色に変化
+            } else {
+                ball.speed = ball.baseSpeed + (player.score + cpu.score) * 0.2;
+                ball.color = "#ffffff";
+            }
+
+            ball.dy = direction * ball.speed * Math.cos(angle);
+            ball.dx = ball.speed * Math.sin(angle);
+        }
+
+        // スコアと終了判定
+        if (ball.y < 0 || ball.y > h) {
+            if (ball.y < 0) player.score++;
+            else cpu.score++;
+            
+            document.getElementById("player-score").innerText = player.score;
+            document.getElementById("cpu-score").innerText = cpu.score;
+
+            if (player.score >= 11 || cpu.score >= 11) {
+                endGame();
+                return;
+            }
+            resetBall();
+        }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function endGame() {
+        isRunning = false;
+        overlay.style.display = "block";
+        if (player.score >= 11) {
+            statusTitle.innerText = "YOU WIN!";
+            statusMsg.innerText = "おめでとう！君の勝利だ！";
+            statusTitle.style.color = "#00b4d8";
+        } else {
+            statusTitle.innerText = "GAME OVER";
+            statusMsg.innerText = "CPUの勝利。次は勝てるはず！";
+            statusTitle.style.color = "#ef476f";
+        }
+    }
+
+    function detectCollision(b, p) {
+        return b.x > p.x && b.x < p.x + p.width &&
+               b.y + b.radius > p.y && b.y - b.radius < p.y + p.height;
+    }
+
+    function draw() {
+        ctx.fillStyle = "#004d40";
+        ctx.fillRect(0, 0, w, h);
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.setLineDash([10, 10]);
+        ctx.strokeRect(0, 0, w, h);
+
+        // プレイヤーパドル（必殺技中は光る）
+        ctx.shadowBlur = (smashActive) ? 20 : 0;
+        ctx.shadowColor = "#00b4d8";
+        drawRect(player.x, player.y, player.width, player.height, smashActive ? "#fff" : player.color);
+        
+        // CPUパドル
+        ctx.shadowBlur = 0;
+        drawRect(cpu.x, cpu.y, cpu.width, cpu.height, cpu.color);
+
+        // ボール
+        ctx.shadowBlur = (ball.color !== "#ffffff") ? 15 : 0;
+        ctx.shadowColor = ball.color;
+        drawCircle(ball.x, ball.y, ball.radius, ball.color);
+        ctx.shadowBlur = 0;
+    }
+
+    function drawRect(x, y, w, h, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, w, h);
+    }
+
+    function drawCircle(x, y, r, color) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+</script>
+
+</body>
+</html>
